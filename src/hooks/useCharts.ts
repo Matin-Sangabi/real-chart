@@ -37,8 +37,8 @@ export const useChart = (chartType: ChartType) => {
       if (!Number.isFinite(min) || !Number.isFinite(max) || min === max) return;
 
       const span = max - min;
-      const leftPad = span * 0.3; // more space قبل دیتا
-      const rightPad = span * 0.7; // بیشتر برای آینده
+      const leftPad = span * 0.3; 
+      const rightPad = span * 0.7; 
 
       chart.timeScale().setVisibleRange({
         from: (min - leftPad) as UTCTimestamp,
