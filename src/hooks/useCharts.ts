@@ -6,7 +6,6 @@ import {
   CandlestickSeries,
   type IChartApi,
   type ISeriesApi,
-  type Time,
   type UTCTimestamp,
 } from "lightweight-charts";
 import type { ChartType } from "../types/chart.types";
@@ -27,56 +26,27 @@ export const useChart = (chartType: ChartType) => {
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<AnySeries | null>(null);
 
-  // dynamic timestamps
-  const syncRightOffsetToCenter = useCallback(() => {
-    const chart = chartRef.current;
-    const container = containerRef.current;
-    if (!chart || !container) return;
+  const applyExpandedVisibleRange = useCallback(
+    (points: { time: UTCTimestamp }[]) => {
+      const chart = chartRef.current;
+      if (!chart || !points.length) return;
 
-    const ts = chart.timeScale();
-    const width = container.clientWidth || 600;
+      const times = points.map((p) => Number(p.time));
+      const min = Math.min(...times);
+      const max = Math.max(...times);
+      if (!Number.isFinite(min) || !Number.isFinite(max) || min === max) return;
 
-    const barSpacing = ts.options().barSpacing ?? 6;
-    const barsOnScreen = Math.max(10, Math.floor(width / barSpacing));
+      const span = max - min;
+      const leftPad = span * 0.3; // more space قبل دیتا
+      const rightPad = span * 0.7; // بیشتر برای آینده
 
-    const desiredRightOffset = Math.floor(barsOnScreen / 2);
-
-    chart.applyOptions({
-      timeScale: {
-        rightOffset: desiredRightOffset,
-      },
-    });
-  }, []);
-
-  // handle 15 and 30 seconds
-  const applyDynamicTickFormatter = useCallback(() => {
-    const chart = chartRef.current;
-    if (!chart) return;
-
-    const ts = chart.timeScale();
-    const range = ts.getVisibleRange();
-    if (!range) return;
-
-    const spanSec = Math.max(1, Number(range.to) - Number(range.from));
-    const zoomedIn = spanSec <= 10 * 60;
-    const step = zoomedIn ? 15 : 30 * 60;
-
-    chart.applyOptions({
-      timeScale: {
-        tickMarkFormatter: (time: Time) => {
-          if (typeof time !== "number") return "";
-          const t = time as number;
-
-          if (t % step !== 0) return "";
-
-          const d = new Date(t * 1000);
-          return zoomedIn
-            ? d.toISOString().slice(11, 19)
-            : d.toISOString().slice(11, 16);
-        },
-      },
-    });
-  }, []);
+      chart.timeScale().setVisibleRange({
+        from: (min - leftPad) as UTCTimestamp,
+        to: (max + rightPad) as UTCTimestamp,
+      });
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -95,39 +65,24 @@ export const useChart = (chartType: ChartType) => {
       timeScale: {
         borderVisible: true,
         timeVisible: true,
-        secondsVisible: false,
+        secondsVisible: true,
       },
     });
 
     chartRef.current = chart;
 
-    const ts = chart.timeScale();
-
-    const onRangeChange = () => {
-      syncRightOffsetToCenter();
-      applyDynamicTickFormatter();
-    };
-
-    ts.subscribeVisibleTimeRangeChange(onRangeChange);
-
     const resizeObServer = new ResizeObserver(() => {
       chart.applyOptions({ autoSize: true });
-      syncRightOffsetToCenter();
-      applyDynamicTickFormatter();
     });
     resizeObServer.observe(containerRef.current);
 
-    syncRightOffsetToCenter();
-    applyDynamicTickFormatter();
-
     return () => {
-      ts.unsubscribeVisibleTimeRangeChange(onRangeChange);
       resizeObServer.disconnect();
       chart.remove();
       chartRef.current = null;
       seriesRef.current = null;
     };
-  }, [syncRightOffsetToCenter, applyDynamicTickFormatter]);
+  }, []);
 
   useEffect(() => {
     const chart = chartRef.current;
@@ -156,10 +111,9 @@ export const useChart = (chartType: ChartType) => {
       if (!seriesRef.current || chartType !== "area") return;
 
       (seriesRef.current as ISeriesApi<"Area">).setData(data);
-      syncRightOffsetToCenter();
-      chartRef.current?.timeScale().scrollToRealTime();
+      applyExpandedVisibleRange(data);
     },
-    [chartType, syncRightOffsetToCenter],
+    [chartType, applyExpandedVisibleRange],
   );
 
   const updateArea = useCallback(
@@ -167,10 +121,9 @@ export const useChart = (chartType: ChartType) => {
       if (!seriesRef.current || chartType !== "area") return;
 
       (seriesRef.current as ISeriesApi<"Area">).update(p);
-      syncRightOffsetToCenter();
       chartRef.current?.timeScale().scrollToRealTime();
     },
-    [chartType, syncRightOffsetToCenter],
+    [chartType],
   );
 
   const setCandleData = useCallback(
@@ -178,10 +131,9 @@ export const useChart = (chartType: ChartType) => {
       if (!seriesRef.current || chartType !== "candle") return;
 
       (seriesRef.current as ISeriesApi<"Candlestick">).setData(data);
-      syncRightOffsetToCenter();
-      chartRef.current?.timeScale().scrollToRealTime();
+      applyExpandedVisibleRange(data);
     },
-    [chartType, syncRightOffsetToCenter],
+    [chartType, applyExpandedVisibleRange],
   );
 
   const updateCandle = useCallback(
@@ -189,10 +141,9 @@ export const useChart = (chartType: ChartType) => {
       if (!seriesRef.current || chartType !== "candle") return;
 
       (seriesRef.current as ISeriesApi<"Candlestick">).update(p);
-      syncRightOffsetToCenter();
       chartRef.current?.timeScale().scrollToRealTime();
     },
-    [chartType, syncRightOffsetToCenter],
+    [chartType],
   );
 
   const clear = useCallback(() => {
