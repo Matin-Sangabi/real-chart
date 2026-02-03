@@ -3,50 +3,39 @@ import { useCallback, useEffect, useMemo, useRef } from "react";
 import {
   createChart,
   AreaSeries,
-  CandlestickSeries,
   type IChartApi,
   type ISeriesApi,
   type UTCTimestamp,
 } from "lightweight-charts";
-import type { ChartType } from "../types/chart.types";
 
-export type AreaPoint = { time: UTCTimestamp; value: number };
-export type CandlePoint = {
+export type AreaPoint = {
   time: UTCTimestamp;
-  open: number;
-  high: number;
-  low: number;
-  close: number;
+  value: number;
 };
 
-type AnySeries = ISeriesApi<"Area"> | ISeriesApi<"Candlestick">;
+const VIRTUAL_PAD_SECONDS = 60 * 60;
 
-export const useChart = (chartType: ChartType) => {
+export function useChart() {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<IChartApi | null>(null);
-  const seriesRef = useRef<AnySeries | null>(null);
+  const seriesRef = useRef<ISeriesApi<"Area"> | null>(null);
 
-  const applyExpandedVisibleRange = useCallback(
-    (points: { time: UTCTimestamp }[]) => {
-      const chart = chartRef.current;
-      if (!chart || !points.length) return;
+  function extendWithVirtualPadding(real: AreaPoint[]) {
+    if (real.length === 0) return { data: [], leftCount: 0 };
 
-      const times = points.map((p) => Number(p.time));
-      const min = Math.min(...times);
-      const max = Math.max(...times);
-      if (!Number.isFinite(min) || !Number.isFinite(max) || min === max) return;
+    const first = real[0].time;
+    const left: any[] = [];
 
-      const span = max - min;
-      const leftPad = span * 0.3; 
-      const rightPad = span * 0.7; 
+    for (let t = first - VIRTUAL_PAD_SECONDS; t < first; t++) {
+      left.push({ time: t as UTCTimestamp });
+    }
 
-      chart.timeScale().setVisibleRange({
-        from: (min - leftPad) as UTCTimestamp,
-        to: (max + rightPad) as UTCTimestamp,
-      });
-    },
-    [],
-  );
+    return {
+      data: [...left, ...real],
+      leftCount: left.length,
+      realCount: real.length,
+    };
+  }
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -55,7 +44,7 @@ export const useChart = (chartType: ChartType) => {
       autoSize: true,
       layout: {
         background: { color: "transparent" },
-        textColor : '#9a9a9a'
+        textColor: "#9a9a9a",
       },
       grid: {
         vertLines: { visible: false },
@@ -63,105 +52,83 @@ export const useChart = (chartType: ChartType) => {
       },
       rightPriceScale: { borderVisible: false },
       timeScale: {
-        borderVisible: true,
         timeVisible: true,
         secondsVisible: true,
+        rightBarStaysOnScroll: true,
+        fixLeftEdge: false,
+        fixRightEdge: false,
       },
     });
 
-    chartRef.current = chart;
+    chart.applyOptions({
+      localization: {
+        timeFormatter: (time: number) => {
+          const date = new Date(time * 1000);
+          const range = chart.timeScale().getVisibleRange();
+          if (!range) return "";
 
-    const resizeObServer = new ResizeObserver(() => {
+          const span = Number(range.to) - Number(range.from);
+
+          if (span < 60 * 5) {
+            return date.toLocaleTimeString(undefined, {
+              minute: "2-digit",
+              second: "2-digit",
+            });
+          }
+
+          return date.toLocaleTimeString(undefined, {
+            hour: "2-digit",
+            minute: "2-digit",
+          });
+        },
+      },
+    });
+
+    const series = chart.addSeries(AreaSeries, {
+      lineWidth: 2,
+    });
+
+    chartRef.current = chart;
+    seriesRef.current = series;
+
+    const ro = new ResizeObserver(() => {
       chart.applyOptions({ autoSize: true });
     });
-    resizeObServer.observe(containerRef.current);
+    ro.observe(containerRef.current);
 
     return () => {
-      resizeObServer.disconnect();
+      ro.disconnect();
       chart.remove();
       chartRef.current = null;
       seriesRef.current = null;
     };
   }, []);
 
-  useEffect(() => {
-    const chart = chartRef.current;
-    if (!chart) return;
+  const setAreaData = useCallback((realData: AreaPoint[]) => {
+    if (!seriesRef.current || !chartRef.current) return;
+    if (!realData.length) return;
 
-    if (seriesRef.current) {
-      chart.removeSeries(seriesRef.current);
-      seriesRef.current = null;
-    }
+    const { data } = extendWithVirtualPadding(realData);
 
-    if (chartType === "area") {
-      seriesRef.current = chart.addSeries(AreaSeries, {
-        lineWidth: 2,
-      }) as ISeriesApi<"Area">;
-    } else {
-      seriesRef.current = chart.addSeries(
-        CandlestickSeries,
-        {},
-      ) as ISeriesApi<"Candlestick">;
-    }
-  }, [chartType]);
+    seriesRef.current.setData(data);
+  }, []);
 
-  //Actions
-  const setAreaData = useCallback(
-    (data: AreaPoint[]) => {
-      if (!seriesRef.current || chartType !== "area") return;
-
-      (seriesRef.current as ISeriesApi<"Area">).setData(data);
-      applyExpandedVisibleRange(data);
-    },
-    [chartType, applyExpandedVisibleRange],
-  );
-
-  const updateArea = useCallback(
-    (p: AreaPoint) => {
-      if (!seriesRef.current || chartType !== "area") return;
-
-      (seriesRef.current as ISeriesApi<"Area">).update(p);
-      chartRef.current?.timeScale().scrollToRealTime();
-    },
-    [chartType],
-  );
-
-  const setCandleData = useCallback(
-    (data: CandlePoint[]) => {
-      if (!seriesRef.current || chartType !== "candle") return;
-
-      (seriesRef.current as ISeriesApi<"Candlestick">).setData(data);
-      applyExpandedVisibleRange(data);
-    },
-    [chartType, applyExpandedVisibleRange],
-  );
-
-  const updateCandle = useCallback(
-    (p: CandlePoint) => {
-      if (!seriesRef.current || chartType !== "candle") return;
-
-      (seriesRef.current as ISeriesApi<"Candlestick">).update(p);
-      chartRef.current?.timeScale().scrollToRealTime();
-    },
-    [chartType],
-  );
+  const updateArea = useCallback((p: AreaPoint) => {
+    if (!seriesRef.current) return;
+    seriesRef.current.update(p);
+  }, []);
 
   const clear = useCallback(() => {
-    if (!seriesRef.current) return;
-
-    (seriesRef.current as any).setData([]);
+    seriesRef.current?.setData([]);
   }, []);
 
   return useMemo(
     () => ({
       containerRef,
-      chartRef,
       setAreaData,
       updateArea,
-      setCandleData,
-      updateCandle,
       clear,
     }),
-    [setAreaData, updateArea, setCandleData, updateCandle, clear],
+    [setAreaData, updateArea, clear],
   );
-};
+}
