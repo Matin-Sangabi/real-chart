@@ -3,7 +3,7 @@ import { useEffect, useRef } from "react";
 import type { Socket } from "socket.io-client";
 import type { UTCTimestamp } from "lightweight-charts";
 import type { ChartType, OldAreaPoint } from "../types/chart.types";
-import { dedupeArea, fromAscii, isoToSec, toSec } from "../lib/utils";
+import { dedupeArea, fromAscii, toSec } from "../lib/utils";
 
 type AreaRealtime = { time: number; value: number };
 type CandleRealtime = { [key: string]: any };
@@ -24,10 +24,10 @@ type Args = {
   chartType: ChartType;
 
   setAreaData: (data: AreaPoint[]) => void;
-  setCandleData: (data: CandlePoint[]) => void;
+  // setCandleData: (data: CandlePoint[]) => void;
 
   updateArea: (point: AreaPoint) => void;
-  updateCandle: (point: CandlePoint) => void;
+  // updateCandle: (point: CandlePoint) => void;
 
   clear: () => void;
 };
@@ -39,7 +39,7 @@ export const useChartDataFeed = ({
   chartType,
   setAreaData,
   updateArea,
-  updateCandle,
+  // updateCandle,
   clear,
 }: Args) => {
   const activeRef = useRef<{ symbol: string; chartType: ChartType } | null>(
@@ -101,25 +101,25 @@ export const useChartDataFeed = ({
       if (chartType === "candle") {
         const d = decoded as CandleRealtime;
 
-        const t =
-          typeof d.timestamp === "string"
-            ? isoToSec(d.timestamp)
-            : typeof d.time === "number"
-              ? toSec(d.time)
-              : (Math.floor(Date.now() / 1000) as UTCTimestamp);
+        // const t =
+        //   typeof d.timestamp === "string"
+        //     ? isoToSec(d.timestamp)
+        //     : typeof d.time === "number"
+        //       ? toSec(d.time)
+        //       : (Math.floor(Date.now() / 1000) as UTCTimestamp);
 
         if (typeof d.open !== "number") {
           console.warn("Candle stream unexpected payload:", d);
           return;
         }
 
-        updateCandle({
-          time: t,
-          open: d.open,
-          high: d.high,
-          low: d.low,
-          close: d.close,
-        });
+        // updateCandle({
+        //   time: t,
+        //   open: d.open,
+        //   high: d.high,
+        //   low: d.low,
+        //   close: d.close,
+        // });
 
         return;
       }
@@ -132,7 +132,7 @@ export const useChartDataFeed = ({
       socket.off("updateOldData", onUpdateOldData);
       socket.off("updateStream", onUpdateStream);
     };
-  }, [isConnected, socket, chartType, setAreaData, updateArea, updateCandle]);
+  }, [isConnected, socket, chartType, setAreaData, updateArea]);
 
   useEffect(() => {
     if (!isConnected) return;

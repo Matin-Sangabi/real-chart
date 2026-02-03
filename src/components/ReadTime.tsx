@@ -10,7 +10,7 @@ export const RealTimeChart: React.FC = () => {
   const symbol = userReady?.lastAsset ?? "XAUUSD";
   const chartType = userReady?.chartType ?? "area";
 
-  const chart = useChart(chartType);
+  const chart = useChart();
 
   useChartDataFeed({
     socket,
@@ -18,9 +18,9 @@ export const RealTimeChart: React.FC = () => {
     symbol,
     chartType,
     setAreaData: chart.setAreaData,
-    setCandleData: chart.setCandleData,
+    // setCandleData: chart.setCandleData,
     updateArea: chart.updateArea,
-    updateCandle: chart.updateCandle,
+    // updateCandle: chart.updateCandle,
     clear: chart.clear,
   });
 
