@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import {
   createChart,
@@ -21,18 +20,27 @@ export function useChart() {
   const seriesRef = useRef<ISeriesApi<"Area"> | null>(null);
 
   function extendWithVirtualPadding(real: AreaPoint[]) {
-    if (real.length === 0) return { data: [], leftCount: 0 };
+    if (real.length === 0)
+      return { data: [], leftCount: 0, rightCount: 0, realCount: 0 };
 
     const first = real[0].time;
-    const left: any[] = [];
+    const last = real[real.length - 1].time;
+
+    const left: { time: UTCTimestamp }[] = [];
+    const right: { time: UTCTimestamp }[] = [];
 
     for (let t = first - VIRTUAL_PAD_SECONDS; t < first; t++) {
       left.push({ time: t as UTCTimestamp });
     }
 
+    for (let t = last + 1; t <= last + VIRTUAL_PAD_SECONDS; t++) {
+      right.push({ time: t as UTCTimestamp });
+    }
+
     return {
-      data: [...left, ...real],
+      data: [...left, ...real, ...right],
       leftCount: left.length,
+      rightCount: right.length,
       realCount: real.length,
     };
   }
@@ -129,6 +137,6 @@ export function useChart() {
       updateArea,
       clear,
     }),
-    [setAreaData, updateArea, clear],
+    [setAreaData, updateArea, clear]
   );
 }
